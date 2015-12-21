@@ -1,0 +1,384 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>BrightCove Demo Pages</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Brightcove Demo Pages">
+    <meta name="author" content="Brightcove">
+
+    <!-- Le styles -->
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap-theme.min.css">
+    <!--<link href="//bcjsanford.com.global.prod.fastly.net/lib/bootstrap/css/bootstrap.css" rel="stylesheet">-->
+    <style>
+      body {
+        padding-top: 50px;
+      }
+      .navbar-header > a {
+        padding: 5px;
+      }
+      @media screen and (min-width: 44em) {
+        .col-group {
+          overflow: hidden;
+        }
+        .col-group > div {
+          float: left;
+          width: 46%;
+        }
+      }
+      .playerframe {
+        width: 95%;
+        float: left;
+      }
+      .panel-heading {
+        font-weight: bold;
+      }
+        
+    </style>
+    <!--<link href="//bcjsanford.com.global.prod.fastly.net/lib/bootstrap/css/bootstrap-responsive.css" rel="stylesheet">-->
+
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="../assets/js/html5shiv.js"></script>
+    <![endif]-->
+
+    <!-- Fav and touch icons -->
+    <link rel="apple-touch-icon-precomposed" href="bc-logo.png">
+    <link rel="shortcut icon" href="favicon.ico">
+  </head>
+
+  <body>
+   <div class="navbar navbar-inverse navbar-fixed-top">
+        <div class="navbar-inner">
+            <div class="container">
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                </button>
+                <a class="brand" href="newplayer.html">
+                    <img src="bc-logo.gif" />
+                </a>
+                <div class="nav-collapse collapse">
+                    <ul class="nav" style="padding-top: 10px">
+                    </ul>
+                </div>
+                <!--/.nav-collapse -->
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+      <h1>Brightcove Player Load Time</h1>
+
+      <div class="col-group">
+        <div>
+          <h3>China Cache Account</h3>
+          <div class="btn-toolbar">
+            <button type="button" class="btn btn-default" id="loadBrightcove">Load Brightcove Player</button>
+          </div>
+          <br>
+          <div id="bcHolder">
+          </div>
+          <div id="bcStats" style="display: inline-block;">
+            <br>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="//bcjsanford.com.global.prod.fastly.net/lib/bootstrap/js/jquery-1.10.2.min.js"></script>
+    <script src="//netdna.bootstrapcdn.com/bootstrap/3.1.1/js/bootstrap.min.js"></script>
+    <!--<script src="//bcjsanford.com.global.prod.fastly.net/lib/bootstrap/js/bootstrap.min.js"></script>-->
+    <!--<script src="https://www.youtube.com/iframe_api"></script>-->
+    <!-- JS callbacks -->
+    <script>
+      var ytPlayer, bcPlayer;
+      var ytDoOnce = false, bcDoOnce = false;
+      var ytClickTime, ytAPIReadyTime, ytPlayerReadyTime, ytPlayTime;
+      var bcClickTime, bcAPIReadyTime, bcPlayerReadyTime, bcPlayTime, bcClickTotal;
+
+      // our embed codes to inject
+      var ytEmbed = '<iframe class="playerframe" id="ytplayerframe" src="//www.youtube.com/embed/A927s8UAjzk?enablejsapi=1" frameborder="0" allowfullscreen></iframe>';
+      var bcEmbed = '<iframe class="playerframe" id="bcplayerframe" src="//players.brightcove.net/4270602692001/2d2c2545-4a2e-43e4-a099-70897c82d19b_default/index.html?videoId=4345408382001" frameborder="0" allowfullscreen webkitallowfullscreen mozallowfullscreen></iframe>';
+
+      // handle load to resize correctly
+      $(function(event) {
+        var pframe = $('.playerframe');
+        pframe.height(pframe.width() * 9 / 16);
+
+        $('#loadBrightcove').on('click', loadBrightcoveEmbed);
+        $('#loadYouTube').on('click', loadYouTubeEmbed);
+      });
+
+      // on resize, set the size appropriately
+      $(window).resize(function(event) {
+        var pframe = $('.playerframe');
+        pframe.height(pframe.width() * 9 / 16);
+        $('#ytStats').width($('.playerframe').width());
+      });
+
+      //----------BEGIN BRIGHTCOVE LOGIC----------//
+      // handle receiving the message
+      window.addEventListener('message', function(event) {
+        if (event.origin.indexOf("http://players.brightcove.com") < 0 && event.origin.indexOf("http://players.brightcove.net") < 0) {
+          //console.log("Invalid origin received");
+          return;
+        }
+        // make sure it's from us
+        if (event.data.substring(0,19) != "passthroughEvents::") {
+          //console.log("Invalid data received");
+          return;
+        }
+
+        var msgData = JSON.parse(event.data.substring(19));
+
+        //console.log(msgData);
+
+        // now get the actual command that we want
+        if (msgData.name == "onAPIReady") {
+          onBrightcoveAPIReady(msgData.time);
+        }
+        else if (msgData.name == "onPlayerReady") {
+          onBrightcovePlayerReady(msgData.time);
+        }
+        else if (msgData.name == "onPlaying") {
+          onBrightcovePlaybackBegins(msgData.time);
+        }
+        // don't really care about this one
+        else if (msgData.name == "onProgress") {
+          //console.log("onProgress: " + msgData.time);
+        }
+      })
+
+      // inject the Brightcove iframe
+      function loadBrightcoveEmbed() {
+        // save the time
+        bcClickTime = new Date();
+
+        bcClickTime = {
+          hours: bcClickTime.getHours().toString(),
+          minutes: bcClickTime.getMinutes().toString(),
+          seconds: bcClickTime.getSeconds().toString(),
+          milliseconds: bcClickTime.getMilliseconds().toString()
+        };
+
+        bcClickTotal = parseInt(bcClickTime.hours)*60*60*1000 + parseInt(bcClickTime.minutes)*60*1000 + parseInt(bcClickTime.seconds)*1000 + parseInt(bcClickTime.milliseconds);
+
+        var hours = bcClickTime.hours.length == 1 ? '0' + bcClickTime.hours : bcClickTime.hours;
+        var minutes = bcClickTime.minutes.length == 1 ? '0' + bcClickTime.minutes : bcClickTime.minutes;
+        var seconds = bcClickTime.seconds.length == 1 ? '0' + bcClickTime.seconds : bcClickTime.seconds;
+        var milliseconds = bcClickTime.milliseconds.length == 1 ? '0' + bcClickTime.milliseconds : bcClickTime.milliseconds;
+        milliseconds = bcClickTime.milliseconds.length == 2 ? '0' + bcClickTime.milliseconds : bcClickTime.milliseconds;
+
+        // inject the iframe
+        $('#bcHolder').append($(bcEmbed));
+
+        // resize it
+        var pframe = $('.playerframe');
+        pframe.height(pframe.width() * 9 / 16);
+
+        $('#bcStats').width($('.playerframe').width());
+
+        $('#bcStats').append($('<div id="bcStatPanel" class="panel panel-default"></div>'));
+        $('#bcStatPanel').append($('<div class="panel-heading">Brightcove Player Load Times</div>'));
+        $('#bcStatPanel').append($('<table id="bcStatTable" class="table"></table>'));
+        $('#bcStatTable').append($('<thead><tr><th>Event</th><th>Time</th><th>Delta (ms)</th></tr></thead>'));
+        $('#bcStatTable').append($('<tbody id="bcStatBody"></tbody>'));
+        $('#bcStatBody').append($('<tr><td>Click</td><td>' + 
+          hours + ':' + 
+          minutes + ':' + 
+          seconds + '.' + 
+          milliseconds + 
+          '</td><td>' + '0' + '</td></tr>'));
+      }
+
+      // callback for when the API is ready
+      function onBrightcoveAPIReady(evtTime) {
+        bcAPIReadyTime = evtTime;
+      }
+
+      // callback for when player is ready
+      function onBrightcovePlayerReady(evtTime) {
+        bcPlayerReadyTime = evtTime;
+
+        var playerReadyTotal = parseInt(bcPlayerReadyTime.hours)*60*60*1000 + parseInt(bcPlayerReadyTime.minutes)*60*1000 + parseInt(bcPlayerReadyTime.seconds)*1000 + parseInt(bcPlayerReadyTime.milliseconds);
+        var playerDif = playerReadyTotal - bcClickTotal;
+
+        var hours = bcPlayerReadyTime.hours.toString().length == 1 ? '0' + bcPlayerReadyTime.hours : bcPlayerReadyTime.hours.toString();
+        var minutes = bcPlayerReadyTime.minutes.toString().length == 1 ? '0' + bcPlayerReadyTime.minutes : bcPlayerReadyTime.minutes.toString();
+        var seconds = bcPlayerReadyTime.seconds.toString().length == 1 ? '0' + bcPlayerReadyTime.seconds : bcPlayerReadyTime.seconds.toString();
+        var milliseconds = bcPlayerReadyTime.milliseconds.toString().length == 1 ? '0' + bcPlayerReadyTime.milliseconds : bcPlayerReadyTime.milliseconds.toString();
+        milliseconds = milliseconds.length == 2 ? '0' + milliseconds : milliseconds;
+        
+        $('#bcStatBody').append($('<tr><td>Player Ready</td><td>' + 
+          hours + ':' + 
+          minutes + ':' + 
+          seconds + '.' + 
+          milliseconds + 
+          '</td><td>' + playerDif + '</td></tr>'));
+      }
+
+      // callback for when playback begins
+      function onBrightcovePlaybackBegins(evtTime) {
+        if (!bcDoOnce) {
+          bcDoOnce = true;
+          bcPlayTime = evtTime;
+
+          var playTotal = parseInt(bcPlayTime.hours)*60*60*1000 + parseInt(bcPlayTime.minutes)*60*1000 + parseInt(bcPlayTime.seconds)*1000 + parseInt(bcPlayTime.milliseconds);
+          var playDif = playTotal - bcClickTotal;
+
+          var hours = bcPlayTime.hours.toString().length == 1 ? '0' + bcPlayTime.hours : bcPlayTime.hours.toString();
+          var minutes = bcPlayTime.minutes.toString().length == 1 ? '0' + bcPlayTime.minutes : bcPlayTime.minutes.toString();
+          var seconds = bcPlayTime.seconds.toString().length == 1 ? '0' + bcPlayTime.seconds : bcPlayTime.seconds.toString();
+          var milliseconds = bcPlayTime.milliseconds.toString().length == 1 ? '0' + bcPlayTime.milliseconds : bcPlayTime.milliseconds.toString();
+          milliseconds = milliseconds.length == 2 ? '0' + milliseconds : milliseconds;
+
+          $('#bcStatBody').append($('<tr><td>Playback Started</td><td>' + 
+            hours + ':' + 
+            minutes + ':' + 
+            seconds + '.' + 
+            milliseconds + 
+            '</td><td>' + playDif + '</td></tr>'));
+        }
+      }
+
+      // Posts message to the iframe 
+      function sendMessage(msg) {
+        var frame = document.getElementById('bcplayerframe');
+        var wnd = frame.contentWindow || frame;
+        wnd.postMessage("vjsAPIPassthrough::"+msg, frame.src);
+      }
+      //----------END BRIGHTCOVE LOGIC----------//
+
+      //----------BEGIN YOUTUBE LOGIC----------//
+      // load the YouTube iframe API and player
+      function loadYouTubeEmbed() {
+        // save the time
+        ytClickTime = new Date();
+
+        // load the iframe API to load the player
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        var firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        $('#ytStats').width($('.playerframe').width());
+
+        var hours = ytClickTime.getHours().toString();
+        var minutes = ytClickTime.getMinutes().toString();
+        var seconds = ytClickTime.getSeconds().toString();
+        var milliseconds = ytClickTime.getMilliseconds().toString();
+        hours = (hours.length == 1 ? '0' + hours : hours);
+        minutes = (minutes.length == 1 ? '0' + minutes : minutes);
+        seconds = (seconds.length == 1 ? '0' + seconds : seconds);
+        milliseconds = (milliseconds.length == 1 ? '0' + milliseconds : milliseconds);
+        milliseconds = (milliseconds.length == 2 ? '0' + milliseconds : milliseconds);
+
+        // and finally print it all out
+        $('#ytStats').append($('<div id="ytStatPanel" class="panel panel-default"></div>'));
+        $('#ytStatPanel').append($('<div class="panel-heading">YoutTube Player Load Times</div>'));
+        $('#ytStatPanel').append($('<table id="ytStatTable" class="table"></table>'));
+        $('#ytStatTable').append($('<thead><tr><th>Event</th><th>Time</th><th>Delta (ms)</th></tr></thead>'));
+        $('#ytStatTable').append($('<tbody id="ytStatBody"></tbody>'));
+        $('#ytStatBody').append($('<tr><td>Click</td><td>' + 
+          hours + ':' + 
+          minutes + ':' + 
+          seconds + '.' + 
+          milliseconds + 
+          '</td><td>' + '0' + '</td></tr>'));
+      }
+
+      // set up the youtubes
+      function onYouTubeIframeAPIReady() {
+        //save the time
+        ytAPIReadyTime = new Date();
+
+        // now load the player
+        ytPlayer = new YT.Player('ytHolder', {
+          videoId: 'A927s8UAjzk',
+          playerVars: {
+            enablejsapi: '1'
+          },
+          events: {
+            'onReady': onYTPlayerReady,
+            'onStateChange': onYTPlayerStateChange
+          }
+        });
+
+        // set the class
+        $('#ytHolder').addClass('playerframe');
+
+        // resize it
+        var pframe = $('.playerframe');
+        pframe.height(pframe.width() * 9 / 16);
+      }
+
+      // when the YT player loads
+      function onYTPlayerReady(event) {
+        // save the time
+        ytPlayerReadyTime = new Date();
+
+        // and play the video (if device supports it)
+        if (navigator.userAgent.match(/iPhone/i) || 
+            navigator.userAgent.match(/iPad/i) || 
+            navigator.userAgent.match(/iPod/i) || 
+            navigator.userAgent.match(/Android/i) )
+          console.log("Skipping calling play");
+        else
+          event.target.playVideo();
+
+        var hours = ytPlayerReadyTime.getHours().toString();
+        var minutes = ytPlayerReadyTime.getMinutes().toString();
+        var seconds = ytPlayerReadyTime.getSeconds().toString();
+        var milliseconds = ytPlayerReadyTime.getMilliseconds().toString();
+        hours = (hours.length == 1 ? '0' + hours : hours);
+        minutes = (minutes.length == 1 ? '0' + minutes : minutes);
+        seconds = (seconds.length == 1 ? '0' + seconds : seconds);
+        milliseconds = (milliseconds.length == 1 ? '0' + milliseconds : milliseconds);
+        milliseconds = (milliseconds.length == 2 ? '0' + milliseconds : milliseconds);
+
+        $('#ytStatBody').append($('<tr><td>Player Ready</td><td>' + 
+          hours + ':' + 
+          minutes + ':' + 
+          seconds + '.' + 
+          milliseconds + 
+          '</td><td>' + (ytPlayerReadyTime.getTime() - ytClickTime.getTime()) + '</td></tr>'));
+      }
+
+      // when it begins playing
+      function onYTPlayerStateChange(event) {
+        // only care if we're playing
+        if (event.data == YT.PlayerState.PLAYING && !ytDoOnce) {
+          console.log(event);
+          ytDoOnce = true;
+          // save the time
+          ytPlayTime = new Date();
+
+          var hours = ytPlayTime.getHours().toString();
+          var minutes = ytPlayTime.getMinutes().toString();
+          var seconds = ytPlayTime.getSeconds().toString();
+          var milliseconds = ytPlayTime.getMilliseconds().toString();
+          hours = (hours.length == 1 ? '0' + hours : hours);
+          minutes = (minutes.length == 1 ? '0' + minutes : minutes);
+          seconds = (seconds.length == 1 ? '0' + seconds : seconds);
+          milliseconds = (milliseconds.length == 1 ? '0' + milliseconds : milliseconds);
+          milliseconds = (milliseconds.length == 2 ? '0' + milliseconds : milliseconds);
+
+          $('#ytStatBody').append($('<tr><td>Playback Started</td><td>' + 
+            hours + ':' + 
+            minutes + ':' + 
+            seconds + '.' + 
+            milliseconds + 
+            '</td><td>' + (ytPlayTime.getTime() - ytClickTime.getTime()) + '</td></tr>'));
+        }
+      }
+      //----------END YOUTUBE LOGIC----------//
+    </script>
+  </body>
+</html>

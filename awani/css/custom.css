@@ -1,0 +1,30 @@
+.no-svg .logo {
+    background: url(../img/bc-logo-ondark.png) no-repeat center center;
+}
+.disclaimer {
+    font-size: smaller;
+    color: darkgrey;
+}
+.top-bar .title-area {
+    margin-left: -15px;
+}
+.outer {
+      width: 80%;
+      display: block;
+      position: relative;
+      margin: 20px auto;
+    }
+    .outer:after {
+      padding-top: 56.25%;
+      display: block;
+      content: '';
+    }
+    .video-js {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
